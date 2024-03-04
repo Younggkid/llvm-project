@@ -79,6 +79,7 @@ set(sources
   X86WinAllocaExpander.cpp
   X86WinEHState.cpp
   X86InsertWait.cpp
+  X86MinFootprint.cpp
   )
 
 add_llvm_target(X86CodeGen ${sources}

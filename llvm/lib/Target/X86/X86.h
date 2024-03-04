@@ -25,6 +25,7 @@ class X86RegisterBankInfo;
 class X86Subtarget;
 class X86TargetMachine;
 
+
 /// This pass converts a legalized DAG into a X86-specific DAG, ready for
 /// instruction scheduling.
 FunctionPass *createX86ISelDag(X86TargetMachine &TM,
@@ -132,6 +133,9 @@ FunctionPass *createX86InsertPrefetchPass();
 /// fp exceptions when strict-fp enabled.
 FunctionPass *createX86InsertX87waitPass();
 
+// add by lcy, try to populate code for mininal footprint.
+FunctionPass *createX86MinFootprintPass();
+
 /// This pass optimizes arithmetic based on knowledge that is only used by
 /// a reduction sequence and is therefore safe to reassociate in interesting
 /// ways.
@@ -180,6 +184,7 @@ enum : unsigned {
   PTR64 = 272
 };
 } // End X86AS namespace
+
 
 } // End llvm namespace
 

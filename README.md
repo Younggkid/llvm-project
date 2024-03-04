@@ -1,7 +1,7 @@
 # The LLVM Compiler Infrastructuree
 
 This directory and its sub-directories contain source code for LLVM,
-a toolkit for the construction of highly optimized compilers,
+a toolkit for the construction of highly optimgitized compilers,
 optimizers, and run-time environments.
 
 The README briefly describes how to get started with building LLVM.

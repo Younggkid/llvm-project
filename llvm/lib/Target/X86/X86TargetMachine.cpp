@@ -519,6 +519,8 @@ void X86PassConfig::addPostRegAlloc() {
 
 void X86PassConfig::addPreSched2() { addPass(createX86ExpandPseudoPass()); }
 
+// add customized pass just like obfuscuro
+// lcy
 void X86PassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOpt::None) {
     addPass(new X86ExecutionDomainFix());
@@ -538,6 +540,7 @@ void X86PassConfig::addPreEmitPass() {
   addPass(createX86DiscriminateMemOpsPass());
   addPass(createX86InsertPrefetchPass());
   addPass(createX86InsertX87waitPass());
+  addPass(createX86MinFootprintPass());
 }
 
 void X86PassConfig::addPreEmitPass2() {

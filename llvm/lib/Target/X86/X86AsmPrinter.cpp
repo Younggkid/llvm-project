@@ -47,7 +47,7 @@ using namespace llvm;
 
 X86AsmPrinter::X86AsmPrinter(TargetMachine &TM,
                              std::unique_ptr<MCStreamer> Streamer)
-    : AsmPrinter(TM, std::move(Streamer)), SM(*this), FM(*this) {}
+    : AsmPrinter(TM, std::move(Streamer)), SM(*this), FM(*this), IC(TM) {}
 
 //===----------------------------------------------------------------------===//
 // Primitive Helper Functions.
@@ -57,7 +57,10 @@ X86AsmPrinter::X86AsmPrinter(TargetMachine &TM,
 ///
 bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   Subtarget = &MF.getSubtarget<X86Subtarget>();
-
+  
+  IC.reset(MF);
+  IC.setCodeSize(0);
+  units = 0;
   SMShadowTracker.startFunction(MF);
   CodeEmitter.reset(TM.getTarget().createMCCodeEmitter(
       *Subtarget->getInstrInfo(), *Subtarget->getRegisterInfo(),
@@ -80,7 +83,8 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
 
   // Emit the rest of the function body.
   emitFunctionBody();
-
+  
+  IC.free();
   // Emit the XRay table for this function.
   emitXRayTable();
 
@@ -89,6 +93,8 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // We didn't modify anything.
   return false;
 }
+
+
 
 void X86AsmPrinter::emitFunctionBodyStart() {
   if (EmitFPOData) {

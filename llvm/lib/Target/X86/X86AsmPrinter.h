@@ -24,6 +24,7 @@ class MCStreamer;
 class X86Subtarget;
 class TargetMachine;
 
+
 class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   const X86Subtarget *Subtarget = nullptr;
   StackMaps SM;
@@ -31,6 +32,29 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   std::unique_ptr<MCCodeEmitter> CodeEmitter;
   bool EmitFPOData = false;
   bool NeedsRetpoline = false;
+  
+
+  //lcy: InstCounter from SGXShield
+  class InstCounter {
+      public:
+          InstCounter (TargetMachine &TM) : TM(TM), codeSize(0), CodeEmitter(NULL) {}
+          ~InstCounter () {}
+          void count(MCInst &Inst, const MCSubtargetInfo &STI);
+          unsigned get() { return instSize; }
+          unsigned set(unsigned sz) { instSize=sz;}
+          unsigned getCodeSize() { return codeSize; }
+          void setCodeSize(unsigned size) { codeSize = size; }
+          void free() { delete CodeEmitter; }
+          void reset(MachineFunction &F);
+      private:
+          MachineFunction *MF;
+          TargetMachine &TM;
+          MCCodeEmitter *CodeEmitter;
+          unsigned instSize;
+          unsigned codeSize;
+  };
+  
+
 
   // This utility class tracks the length of a stackmap instruction's 'shadow'.
   // It is used by the X86AsmPrinter to ensure that the stackmap shadow
@@ -78,6 +102,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   // This helper function invokes the SMShadowTracker on each instruction before
   // outputting it to the OutStream. This allows the shadow tracker to minimise
   // the number of NOPs used for stackmap padding.
+  void EmitAndAlignInstruction(MCInst &Inst);
   void EmitAndCountInstruction(MCInst &Inst);
   void LowerSTACKMAP(const MachineInstr &MI);
   void LowerPATCHPOINT(const MachineInstr &MI, X86MCInstLower &MCIL);
@@ -114,6 +139,11 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
                               raw_ostream &O, const char *Modifier);
 
 public:
+
+  InstCounter IC;
+  unsigned units;
+  bool isUncondBranch;
+
   X86AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
 
   StringRef getPassName() const override {

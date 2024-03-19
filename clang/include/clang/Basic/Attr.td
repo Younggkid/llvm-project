@@ -655,6 +655,17 @@ def Aligned : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+// Added by chenyang
+def Mince : InheritableAttr {
+  let Spellings = [GCC<"mince">, Declspec<"mince">, Keyword<"minc">,
+                   Keyword<"_minces">];
+  let Args = [];
+  let Accessors = [Accessor<"isGNU", [GCC<"mince">]>,
+                   Accessor<"isC11", [Keyword<"_minces">]>];
+  let Documentation = [Undocumented];
+}
+// changes by chengyang end
+
 def AlignValue : Attr {
   let Spellings = [
     // Unfortunately, this is semantically an assertion, not a directive

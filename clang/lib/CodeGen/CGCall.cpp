@@ -1951,6 +1951,13 @@ void CodeGenModule::ConstructAttributeList(
   // information.
   // FIXME: handle sseregparm someday...
   if (TargetDecl) {
+
+    // added by chenyang
+    if (TargetDecl->hasAttr<MinceAttr>()) {
+      FuncAttrs.addAttribute("mince");
+    }
+    // chenyang's changes ends
+    
     if (TargetDecl->hasAttr<ReturnsTwiceAttr>())
       FuncAttrs.addAttribute(llvm::Attribute::ReturnsTwice);
     if (TargetDecl->hasAttr<NoThrowAttr>())

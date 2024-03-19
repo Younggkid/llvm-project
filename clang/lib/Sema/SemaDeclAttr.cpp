@@ -7616,6 +7616,14 @@ EnforceTCBLeafAttr *Sema::mergeEnforceTCBLeafAttr(
 // Top Level Sema Entry Points
 //===----------------------------------------------------------------------===//
 
+// added by chenyang
+static void handleMinceAttr(Sema &S, Decl *D, const ParsedAttr &AL)
+{
+  D->addAttr(::new (S.Context) MinceAttr(S.Context, AL));
+  return;
+}
+// end changes
+
 /// ProcessDeclAttribute - Apply the specific attribute to the specified decl if
 /// the attribute applies to decls.  If the attribute is a type attribute, just
 /// silently ignore it if a GNU attribute.
@@ -7660,6 +7668,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_Interrupt:
     handleInterruptAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_Mince:
+    // added by chenyang
+    handleMinceAttr(S, D, AL);
     break;
   case ParsedAttr::AT_X86ForceAlignArgPointer:
     handleX86ForceAlignArgPointerAttr(S, D, AL);

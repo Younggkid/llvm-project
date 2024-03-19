@@ -45,7 +45,8 @@
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
-
+#include "llvm/Support/TargetRegistry.h"
+#include <iostream>
 using namespace llvm;
 
 namespace {
@@ -113,6 +114,24 @@ void X86AsmPrinter::StackMapShadowTracker::count(MCInst &Inst,
   }
 }
 
+void X86AsmPrinter::InstCounter::count(MCInst &Inst, const MCSubtargetInfo &STI) {
+
+    SmallString<256> Code;
+    SmallVector<MCFixup, 4> Fixups;
+    raw_svector_ostream VecOS(Code);
+    CodeEmitter->encodeInstruction(Inst, VecOS, Fixups, STI);
+    instSize = Code.size();
+    codeSize += instSize;
+}
+
+void X86AsmPrinter::InstCounter::reset(MachineFunction &F) {
+    MF = &F;
+    CodeEmitter = TM.getTarget().createMCCodeEmitter(
+            *F.getSubtarget().getInstrInfo(),
+            *F.getSubtarget().getRegisterInfo(), F.getContext());
+}
+
+
 void X86AsmPrinter::StackMapShadowTracker::emitShadowPadding(
     MCStreamer &OutStreamer, const MCSubtargetInfo &STI) {
   if (InShadow && CurrentShadowSize < RequiredShadowSize) {
@@ -127,6 +146,63 @@ void X86AsmPrinter::EmitAndCountInstruction(MCInst &Inst) {
   SMShadowTracker.count(Inst, getSubtargetInfo(), CodeEmitter.get());
 }
 
+void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
+
+
+  if (MF->hasInlineAsm()) {
+    EmitAndCountInstruction(Inst);
+    return;
+  }
+  
+  // lcy, it seems that use jmp4 here can make couting more accurate
+  if (Inst.getOpcode() == X86::JMP_1) Inst.setOpcode(X86::JMP_4);
+  if (Inst.getOpcode() == X86::JCC_1) Inst.setOpcode(X86::JCC_4);
+
+  
+  IC.count(Inst, getSubtargetInfo());
+  unsigned isz = IC.get();
+  std::cout<<"has size of"<<isz<<std::endl;
+ 
+  if (IC.getCodeSize() > (64 - 5)) {
+    // emit jmp
+    Twine tmp = MF->getName() + "." + Twine(units++);
+    MCSymbol *Sym = OutContext.getOrCreateSymbol(tmp);
+
+
+    if (isUncondBranch)
+      EmitAndCountInstruction(Inst);
+    else {
+      EmitAndCountInstruction(MCInstBuilder(X86::JMP_4)
+          .addExpr(MCSymbolRefExpr::create(Sym,
+              MCSymbolRefExpr::VK_None, OutContext)));
+      emitX86Nops(*OutStreamer,64 - 5 - (IC.getCodeSize()-isz) , Subtarget);
+    }
+      
+    // emit align
+    
+    // OutStreamer->emitCodeAlignment(64);
+    Twine tmp1 = MF->getName() + ".dummy" + "." + Twine(units);
+    MCSymbol *Sym1 = OutContext.getOrCreateSymbol(tmp1);
+    OutStreamer->emitLabel(Sym1);
+    emitX86Nops(*OutStreamer,64 , Subtarget);
+    // emit label
+    OutStreamer->emitLabel(Sym);
+
+    if (isUncondBranch)
+      IC.setCodeSize(0);
+    else {
+      IC.setCodeSize(isz);
+      EmitAndCountInstruction(Inst);
+    }
+    return;
+  }
+  
+  // unify the size of jmp
+
+   
+  EmitAndCountInstruction(Inst);
+
+ }
 X86MCInstLower::X86MCInstLower(const MachineFunction &mf,
                                X86AsmPrinter &asmprinter)
     : Ctx(mf.getContext()), MF(mf), TM(mf.getTarget()), MAI(*TM.getMCAsmInfo()),
@@ -2366,11 +2442,16 @@ static void addConstantComments(const MachineInstr *MI,
   }
 }
 
+
 void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
   X86MCInstLower MCInstLowering(*MF, *this);
   const X86RegisterInfo *RI =
       MF->getSubtarget<X86Subtarget>().getRegisterInfo();
-
+  
+  // lcy
+  isUncondBranch = (MI->isReturn() || MI->isUnconditionalBranch() || MI->isIndirectBranch());
+  
+   if (MI->isBundle()) std::cout<<"is bundle!"<<std::endl;
   // Add a comment about EVEX-2-VEX compression for AVX-512 instrs that
   // are compressed from EVEX encoding to VEX encoding.
   if (TM.Options.MCOptions.ShowMCEncoding) {
@@ -2422,7 +2503,7 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
         MI == &MF->front().front()) {
       MCInst Inst;
       MCInstLowering.Lower(MI, Inst);
-      EmitAndCountInstruction(Inst);
+      EmitAndAlignInstruction(Inst);
       CurrentPatchableFunctionEntrySym = createTempSymbol("patch");
       OutStreamer->emitLabel(CurrentPatchableFunctionEntrySym);
       return;
@@ -2463,7 +2544,7 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     MCSymbol *PICBase = MF->getPICBaseSymbol();
     // FIXME: We would like an efficient form for this, so we don't have to do a
     // lot of extra uniquing.
-    EmitAndCountInstruction(
+    EmitAndAlignInstruction(
         MCInstBuilder(X86::CALLpcrel32)
             .addExpr(MCSymbolRefExpr::create(PICBase, OutContext)));
 
@@ -2485,7 +2566,7 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     OutStreamer->emitLabel(PICBase);
 
     // popl $reg
-    EmitAndCountInstruction(
+    EmitAndAlignInstruction(
         MCInstBuilder(X86::POP32r).addReg(MI->getOperand(0).getReg()));
 
     if (HasActiveDwarfFrame && !hasFP) {
@@ -2520,7 +2601,7 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     DotExpr = MCBinaryExpr::createAdd(
         MCSymbolRefExpr::create(OpSym, OutContext), DotExpr, OutContext);
 
-    EmitAndCountInstruction(MCInstBuilder(X86::ADD32ri)
+    EmitAndAlignInstruction(MCInstBuilder(X86::ADD32ri)
                                 .addReg(MI->getOperand(0).getReg())
                                 .addReg(MI->getOperand(1).getReg())
                                 .addExpr(DotExpr));
@@ -2560,13 +2641,13 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     return LowerPATCHABLE_TYPED_EVENT_CALL(*MI, MCInstLowering);
 
   case X86::MORESTACK_RET:
-    EmitAndCountInstruction(MCInstBuilder(getRetOpcode(*Subtarget)));
+    EmitAndAlignInstruction(MCInstBuilder(getRetOpcode(*Subtarget)));
     return;
 
   case X86::MORESTACK_RET_RESTORE_R10:
     // Return, then restore R10.
-    EmitAndCountInstruction(MCInstBuilder(getRetOpcode(*Subtarget)));
-    EmitAndCountInstruction(
+    EmitAndAlignInstruction(MCInstBuilder(getRetOpcode(*Subtarget)));
+    EmitAndAlignInstruction(
         MCInstBuilder(X86::MOV64rr).addReg(X86::R10).addReg(X86::RAX));
     return;
 
@@ -2592,14 +2673,14 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
       // looking for a call. We may emit an unnecessary nop in some cases.
       if (!MBBI->isPseudo()) {
         if (MBBI->isCall())
-          EmitAndCountInstruction(MCInstBuilder(X86::NOOP));
+          EmitAndAlignInstruction(MCInstBuilder(X86::NOOP));
         break;
       }
     }
     return;
   }
   case X86::UBSAN_UD1:
-    EmitAndCountInstruction(MCInstBuilder(X86::UD1Lm)
+    EmitAndAlignInstruction(MCInstBuilder(X86::UD1Lm)
                                 .addReg(X86::EAX)
                                 .addReg(X86::EAX)
                                 .addImm(1)
@@ -2626,6 +2707,10 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     OutStreamer->emitInstruction(TmpInst, getSubtargetInfo());
     return;
   }
+  
 
-  EmitAndCountInstruction(TmpInst);
+  // lcy: the final function for emit
+  EmitAndAlignInstruction(TmpInst);
+
+  
 }

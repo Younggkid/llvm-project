@@ -36,6 +36,7 @@ endfunction()
 
 if(COMPILER_RT_BUILD_SANITIZERS OR COMPILER_RT_BUILD_MEMPROF)
   compiler_rt_build_runtime(interception)
+  compiler_rt_build_sanitizer(mince)
 endif()
 
 if(COMPILER_RT_BUILD_SANITIZERS)

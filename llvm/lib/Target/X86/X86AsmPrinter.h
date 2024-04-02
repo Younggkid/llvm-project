@@ -104,6 +104,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   // the number of NOPs used for stackmap padding.
   void EmitAndAlignInstruction(MCInst &Inst);
   void EmitAndCountInstruction(MCInst &Inst);
+  bool  EmitMoveInstruction(MCInst &Inst);
   void LowerSTACKMAP(const MachineInstr &MI);
   void LowerPATCHPOINT(const MachineInstr &MI, X86MCInstLower &MCIL);
   void LowerSTATEPOINT(const MachineInstr &MI, X86MCInstLower &MCIL);
@@ -143,7 +144,8 @@ public:
   InstCounter IC;
   unsigned units;
   bool isUncondBranch;
-
+  bool isMince = false;
+  bool isMove = false;
   X86AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
 
   StringRef getPassName() const override {

@@ -61,6 +61,7 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   IC.reset(MF);
   IC.setCodeSize(0);
   units = 0;
+  isMince = MF.getFunction().hasFnAttribute("mince");
   SMShadowTracker.startFunction(MF);
   CodeEmitter.reset(TM.getTarget().createMCCodeEmitter(
       *Subtarget->getInstrInfo(), *Subtarget->getRegisterInfo(),

@@ -146,6 +146,302 @@ void X86AsmPrinter::EmitAndCountInstruction(MCInst &Inst) {
   SMShadowTracker.count(Inst, getSubtargetInfo(), CodeEmitter.get());
 }
 
+
+bool X86AsmPrinter::EmitMoveInstruction(MCInst &Inst) {
+  // rm->load
+  // mr->store
+  bool isLoadByRegisterOffset = false, isLoadByExpression = false, 
+  isStoreByRegisterOffset = false, isStoreByExpression = false;
+
+  switch(Inst.getOpcode())
+  {
+    case X86::MOV64rm:
+    case X86::MOV32rm:
+    case X86::MOV16rm:
+    case X86::MOV8rm:{
+                          // printf("load instruction!\n");
+                          // Inst.dump();
+                          MCOperand& operand = Inst.getOperand(1);//examine source register, there is no mem 2 mem mov
+
+                          if(operand.isReg() == true ) // not noreg
+                          {
+                              if(operand.getReg() != 0)
+                              {
+                                  isLoadByRegisterOffset = true;
+                              }else
+                              {
+                                  isLoadByExpression = true;
+                              }
+                          }
+                          break;
+                      }
+    case X86::MOV64mr:
+    case X86::MOV32mr:
+    case X86::MOV16mr:
+    case X86::MOV8mr:
+                      {
+                          // printf("store instruction!\n");
+                          //Inst.dump();
+                          MCOperand& operand = Inst.getOperand(0);//examine destination register, there is no mem 2 mem mov
+
+                          if(operand.isReg() == true )
+                          {
+
+                              if(operand.getReg() != 0)
+                              {
+                                  isStoreByRegisterOffset = true;
+                              }else
+                              {
+                                  isStoreByExpression = true;
+                              }
+                          }
+                          break;
+                      }
+    default: return false;
+  }
+     if(isLoadByRegisterOffset)
+    {
+        SmallVector<MCInst, 4> inst_list;
+
+        unsigned long int tmpCodeSize = IC.getCodeSize();
+        //lea mem addr, r15
+        //mov __mince_data_addr_translate, r14
+        //call r14
+        //mov (r14), [original load register]
+
+        const X86InstrInfo * TII = getSubtarget().getInstrInfo();
+        const MCInstrDesc & desc = TII->get(X86::LEA64r);
+        uint64_t TSFlags = desc.TSFlags;
+
+
+        //assert(Inst.getOperand(4).isImm());
+        MCInst& movAddrInst = MCInstBuilder(X86::LEA64r)
+            .addReg(X86::R15)
+            .addReg(Inst.getOperand(1).getReg()) //base
+            .addImm(Inst.getOperand(2).getImm())//addrScaleAmt
+            .addReg(Inst.getOperand(3).getReg())//IndexReg , no reg
+            .addOperand(Inst.getOperand(4)) //Displacement (Imm or Expr)
+            .addReg(0);
+
+        inst_list.push_back(movAddrInst);
+        IC.count(movAddrInst, getSubtargetInfo());
+
+        Twine read_function_name = "__mince_data_addr_translate";
+        MCSymbol * read_function_symbol = OutContext.getOrCreateSymbol(read_function_name);
+        MCInst & movFuncAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R14)
+            .addExpr(MCSymbolRefExpr::create(read_function_symbol, MCSymbolRefExpr::VK_None, OutContext));
+        inst_list.push_back(movFuncAddrInst);
+        IC.count(movFuncAddrInst, getSubtargetInfo());
+
+        MCInst& callLoadInst = MCInstBuilder(X86::CALL64r)
+            .addReg(X86::R14);
+        inst_list.push_back(callLoadInst);
+        IC.count(callLoadInst, getSubtargetInfo());
+
+        MCInst& movDstInst = MCInstBuilder(Inst.getOpcode())
+            .addReg(Inst.getOperand(0).getReg())
+            .addReg(X86::R14) //base
+            .addImm(1)//addrScaleAmt
+            .addReg(0)//IndexReg , no reg
+            .addImm(0) //Displacement (Imm or Expr)
+            .addReg(0);
+
+        inst_list.push_back(movDstInst);
+        IC.count(movDstInst, getSubtargetInfo());
+
+        unsigned int instSize = IC.getCodeSize() - tmpCodeSize;
+
+
+        for(unsigned int i=0; i<inst_list.size(); i++)
+        {
+
+            EmitAndCountInstruction(inst_list[i]);
+
+        }
+        
+        return true;
+    }else if(isLoadByExpression)
+    {
+        //if it is not oblivious, it just read from regular region 
+        //before
+        //    mov expression, dst_reg
+        //after
+        //    mov expression, r15
+        //    mov __obfuscuro_data_addr_translate, r14
+        //    call *r14
+        //    mov (r14), dst_reg
+
+        SmallVector<MCInst, 4> inst_list;
+        unsigned int tmpCodeSize = IC.getCodeSize();
+        MCInst& movAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R15)
+            .addExpr(Inst.getOperand(4).getExpr());
+        inst_list.push_back(movAddrInst);
+        IC.count(movAddrInst, getSubtargetInfo());
+
+        Twine read_function_name = "__mince_data_addr_translate";
+        MCSymbol * read_function_symbol = OutContext.getOrCreateSymbol(read_function_name);
+        MCInst & movFuncAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R14)
+            .addExpr(MCSymbolRefExpr::create(read_function_symbol, MCSymbolRefExpr::VK_None, OutContext));
+        inst_list.push_back(movFuncAddrInst);
+        IC.count(movFuncAddrInst, getSubtargetInfo());
+
+
+        MCInst & callLoadInst = MCInstBuilder(X86::CALL64r)
+            .addReg(X86::R14);
+        inst_list.push_back(callLoadInst);
+        IC.count(callLoadInst, getSubtargetInfo());
+
+    
+        MCInst& movDstInst = MCInstBuilder(Inst.getOpcode())
+            .addReg(Inst.getOperand(0).getReg())
+            .addReg(X86::R14) //base
+            .addImm(1)//addrScaleAmt
+            .addReg(0)//IndexReg , no reg
+            .addImm(0) //Displacement (Imm or Expr)
+            .addReg(0);
+
+        inst_list.push_back(movDstInst);
+        IC.count(movDstInst, getSubtargetInfo());
+
+        unsigned int instSize = IC.getCodeSize() - tmpCodeSize;
+
+        
+        for(unsigned int i=0; i<inst_list.size(); i++)
+        {
+            EmitAndCountInstruction(inst_list[i]);
+        }
+        
+        return true;
+
+
+    }else if(isStoreByRegisterOffset)
+    {
+
+
+        //before
+        //    mov reg, dest_addr
+        //after
+        //version 3 (3 reserved registers)
+        //    mov dest_addr, r15
+        //    mov __obfuscuro_data_addr_translate, r14
+        //    call r14
+        //    mov reg ,(r14) 
+        unsigned int tmpCodeSize = IC.getCodeSize();
+        SmallVector<MCInst, 4> inst_list;
+        MCInst& movAddrInst = MCInstBuilder(X86::LEA64r)
+            .addReg(X86::R15)
+            .addReg(Inst.getOperand(0).getReg())//base
+            .addImm(Inst.getOperand(1).getImm())//addrScaleAmt
+            .addReg(Inst.getOperand(2).getReg())//IndexReg
+            .addOperand(Inst.getOperand(3))//Disp, or Expr
+            .addReg(0);
+
+        inst_list.push_back(movAddrInst); 
+        IC.count(movAddrInst, getSubtargetInfo());
+
+
+        MCSymbol * write_function_symbol = OutContext.getOrCreateSymbol("__mince_data_addr_translate");
+        MCInst & movWriteFuncAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R14)
+            .addExpr(MCSymbolRefExpr::create(write_function_symbol, MCSymbolRefExpr::VK_None, OutContext));
+        inst_list.push_back(movWriteFuncAddrInst);
+        IC.count(movWriteFuncAddrInst, getSubtargetInfo());
+
+
+        MCInst& callWriteInst = MCInstBuilder(X86::CALL64r)
+            .addReg(X86::R14);
+        inst_list.push_back(callWriteInst);
+        IC.count(callWriteInst, getSubtargetInfo());
+
+        MCInst& movDstInst = MCInstBuilder(Inst.getOpcode())
+            .addReg(X86::R14) //base
+            .addImm(1)//addrScaleAmt
+            .addReg(0)//IndexReg , no reg
+            .addImm(0) //Displacement (Imm or Expr)
+            .addReg(0)
+            .addReg(Inst.getOperand(5).getReg());
+
+        inst_list.push_back(movDstInst);
+        IC.count(movDstInst, getSubtargetInfo());
+
+        unsigned int instSize = IC.getCodeSize() - tmpCodeSize;
+        
+        // assume nor bundle
+        for(unsigned int i=0; i<inst_list.size(); i++)
+        {
+              EmitAndCountInstruction(inst_list[i]);
+           
+        }
+        
+        return true;
+
+
+    }else if(isStoreByExpression)
+    {
+
+        //goto skipMemoryInstrument;
+        //before
+        //    mov src_reg, expression
+        //after
+        //version 2 (3 registers)
+        //    mov express, r15
+        //    mov __obfuscuro_data_addr_translate, r14
+        //    call r14
+        //    mov express, (r14)
+        //
+
+
+        unsigned int tmpCodeSize = IC.getCodeSize();
+        SmallVector<MCInst, 4> inst_list;
+        MCInst& movAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R15)
+            .addExpr(Inst.getOperand(3).getExpr());
+
+        inst_list.push_back(movAddrInst); 
+        IC.count(movAddrInst, getSubtargetInfo());
+
+        MCSymbol * write_function_symbol = OutContext.getOrCreateSymbol("__mince_data_addr_translate");
+
+        MCInst & movWriteFuncAddrInst = MCInstBuilder(X86::MOV64ri)
+            .addReg(X86::R14)
+            .addExpr(MCSymbolRefExpr::create(write_function_symbol, MCSymbolRefExpr::VK_None, OutContext));
+        inst_list.push_back(movWriteFuncAddrInst);
+        IC.count(movWriteFuncAddrInst, getSubtargetInfo());
+
+
+        MCInst& callWriteInst = MCInstBuilder(X86::CALL64r)
+            .addReg(X86::R14);
+        inst_list.push_back(callWriteInst);
+        IC.count(callWriteInst, getSubtargetInfo());
+        
+            
+        MCInst& movDstInst = MCInstBuilder(Inst.getOpcode())
+            .addReg(X86::R14) //base
+            .addImm(1)//addrScaleAmt
+            .addReg(0)//IndexReg , no reg
+            .addImm(0) //Displacement (Imm or Expr)
+            .addReg(0)
+            .addReg(Inst.getOperand(0).getReg());
+        inst_list.push_back(movDstInst);
+        IC.count(movDstInst, getSubtargetInfo());
+        
+
+        unsigned int instSize = IC.getCodeSize() - tmpCodeSize;
+
+        for(int i=0; i<inst_list.size(); i++)
+        {
+            EmitAndCountInstruction(inst_list[i]);
+
+        }
+
+        
+        return true;
+    }
+  
+}
 void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
 
 
@@ -154,14 +450,52 @@ void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
     return;
   }
   
+  if (isMince) {
+      /* Below are code for adding dummy page, and emitting jump instructions
+  */
   // lcy, it seems that use jmp4 here can make couting more accurate
   if (Inst.getOpcode() == X86::JMP_1) Inst.setOpcode(X86::JMP_4);
   if (Inst.getOpcode() == X86::JCC_1) Inst.setOpcode(X86::JCC_4);
+  int before = IC.getCodeSize();
+  isMove = EmitMoveInstruction(Inst);
+  int after = IC.getCodeSize();
+  int ibsz = after - before;
+  if (isMove) {
 
+      if (IC.getCodeSize() > (64 - 5)) {
+    // emit jmp
+    Twine tmp = MF->getName() + "." + Twine(units++);
+    MCSymbol *Sym = OutContext.getOrCreateSymbol(tmp);
+
+
+
+      EmitAndCountInstruction(MCInstBuilder(X86::JMP_4)
+          .addExpr(MCSymbolRefExpr::create(Sym,
+              MCSymbolRefExpr::VK_None, OutContext)));
+      emitX86Nops(*OutStreamer,64 - 5 - (IC.getCodeSize()-ibsz) , Subtarget);
+    
+      
+    // emit align
+    
+    // OutStreamer->emitCodeAlignment(64);
+    Twine tmp1 = MF->getName() + ".dummy" + "." + Twine(units);
+    MCSymbol *Sym1 = OutContext.getOrCreateSymbol(tmp1);
+    OutStreamer->emitLabel(Sym1);
+    emitX86Nops(*OutStreamer,1024 - 64 , Subtarget);
+    // emit label
+    OutStreamer->emitLabel(Sym);
+
+
+    IC.setCodeSize(0);
+    
+    return;
+  }
+  return;
+
+  }
   
   IC.count(Inst, getSubtargetInfo());
   unsigned isz = IC.get();
-  std::cout<<"has size of"<<isz<<std::endl;
  
   if (IC.getCodeSize() > (64 - 5)) {
     // emit jmp
@@ -184,7 +518,7 @@ void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
     Twine tmp1 = MF->getName() + ".dummy" + "." + Twine(units);
     MCSymbol *Sym1 = OutContext.getOrCreateSymbol(tmp1);
     OutStreamer->emitLabel(Sym1);
-    emitX86Nops(*OutStreamer,64 , Subtarget);
+    emitX86Nops(*OutStreamer,1024 - 64, Subtarget);
     // emit label
     OutStreamer->emitLabel(Sym);
 
@@ -197,10 +531,12 @@ void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
     return;
   }
   
-  // unify the size of jmp
-
-   
   EmitAndCountInstruction(Inst);
+
+
+  }
+
+  else EmitAndCountInstruction(Inst);
 
  }
 X86MCInstLower::X86MCInstLower(const MachineFunction &mf,
@@ -2711,6 +3047,7 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
 
   // lcy: the final function for emit
   EmitAndAlignInstruction(TmpInst);
+  
 
   
 }

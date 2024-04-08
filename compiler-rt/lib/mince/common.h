@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include "../../include/sanitizer/mince_interface.h"
 
 typedef unsigned long ADDRTY;
 typedef unsigned long SIZETY;

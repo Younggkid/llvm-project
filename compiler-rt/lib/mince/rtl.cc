@@ -65,7 +65,7 @@ extern "C"
 NOINLINE INTERFACE_ATTRIBUTE
 unsigned long __mince_data_addr_translate_inner(void) {
   register ADDRTY req_addr asm ("r15");
-  printf("req_addr is %lx\n",req_addr);
+  printf("req_addr is %lx,   ",req_addr);
   if ((unsigned long)req_addr < (unsigned long)&secret[0] || (unsigned long)req_addr > (unsigned long)&secret[0] + 128 ) return req_addr;
   ADDRTY dst_addr;
   unsigned long req_block = req_addr/64;
@@ -76,5 +76,6 @@ unsigned long __mince_data_addr_translate_inner(void) {
       break;
     }
   }
+  printf("new_addr is %lx\n",req_addr);
   return dst_addr;
 }

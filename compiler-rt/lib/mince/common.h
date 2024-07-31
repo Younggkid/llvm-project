@@ -18,8 +18,8 @@ typedef unsigned long SIZETY;
 
 #define LINE_SIZE  64 // the size of cache line
 #define PAGE_SIZE  4096 // the size of one page
-#define NUM_CODE_PAGE  32
-#define NUM_DATA_PAGE  16
+#define NUM_CODE_PAGE  1
+#define NUM_DATA_PAGE  40
 
 typedef struct {
     char memory[LINE_SIZE];
@@ -39,7 +39,9 @@ typedef struct {
 extern unsigned int real_data_blocks_num;
 extern map_block_t data_mapping[NUM_DATA_PAGE];
 extern page_t data_region[NUM_DATA_PAGE];
-extern int secret[16];
+extern int secret[256];
+extern unsigned int Te0[256];
+
 
 
 

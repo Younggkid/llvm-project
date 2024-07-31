@@ -481,7 +481,7 @@ void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
     Twine tmp1 = MF->getName() + ".dummy" + "." + Twine(units);
     MCSymbol *Sym1 = OutContext.getOrCreateSymbol(tmp1);
     OutStreamer->emitLabel(Sym1);
-    emitX86Nops(*OutStreamer,1024 - 64 , Subtarget);
+    emitX86Nops(*OutStreamer,64 , Subtarget);
     // emit label
     OutStreamer->emitLabel(Sym);
 
@@ -518,7 +518,7 @@ void X86AsmPrinter::EmitAndAlignInstruction(MCInst &Inst)  {
     Twine tmp1 = MF->getName() + ".dummy" + "." + Twine(units);
     MCSymbol *Sym1 = OutContext.getOrCreateSymbol(tmp1);
     OutStreamer->emitLabel(Sym1);
-    emitX86Nops(*OutStreamer,1024 - 64, Subtarget);
+    emitX86Nops(*OutStreamer,64, Subtarget);
     // emit label
     OutStreamer->emitLabel(Sym);
 

@@ -11,6 +11,7 @@ extern "C" {
 #endif
 
     void __mince_populate(unsigned long, unsigned long, unsigned int);
+    unsigned long get_mince_start_addr();
 
 #ifdef __cplusplus
 }

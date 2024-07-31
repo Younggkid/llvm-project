@@ -5,7 +5,7 @@
 
 unsigned int real_data_blocks_num = 0;
 map_block_t data_mapping[NUM_DATA_PAGE];
-page_t data_region[NUM_DATA_PAGE];
+page_t __attribute__((section(".sgx_mince"))) data_region[NUM_DATA_PAGE] __attribute__((aligned (4096)));
 
 void populate_newdram(ADDRTY addr, SIZETY size, unsigned int index) {
 
@@ -18,8 +18,8 @@ void populate_newdram(ADDRTY addr, SIZETY size, unsigned int index) {
 
     //unsigned char * tmp_bb = (unsigned char *)((unsigned long)(&code_region[index]));
     //printf("%x, %x, %x\n",tmp_bb[61],tmp_bb[62],tmp_bb[63] );
-    printf("this block is %lx\n",addr);
-    printf("data region add is %p\n",&data_region[index]);
+    //printf("this block is %lx\n",addr);
+    //printf("data region add is %p\n",&data_region[index]);
     //printf("sanity not checking\n");
 }
 /*
